@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Daniel AI</title>
+
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: "Segoe UI", Arial;
+}
+
+body {
+  display: flex;
+  height: 100vh;
+  background: #0f172a;
+  color: white;
+}
+
+/* SIDEBAR */
+.sidebar {
+  width: 260px;
+  background: #020617;
+  padding: 20px;
+  border-right: 1px solid #1e293b;
+}
+
+.sidebar h2 {
+  margin-bottom: 20px;
+}
+
+.new-chat {
+  background: #1e293b;
+  padding: 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: center;
+}
+
+/* MAIN */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* START */
+.start {
+  margin: auto;
+  text-align: center;
+}
+
+.start h1 {
+  font-size: 28px;
+  margin-bottom: 20px;
+}
+
+/* CHAT */
+.chat {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: none;
+}
+
+.msg {
+  max-width: 60%;
+  padding: 14px;
+  margin: 12px 0;
+  border-radius: 14px;
+}
+
+.user {
+  background: #2563eb;
+  margin-left: auto;
+}
+
+.bot {
+  background: #1e293b;
+}
+
+/* INPUT */
+.input-box {
+  display: none;
+  width: 60%;
+  margin: 10px auto;
+  padding: 10px;
+  background: #020617;
+  border-radius: 20px;
+}
+
+.input-box input {
+  flex: 1;
+  padding: 10px;
+  border-radius: 10px;
+  border: none;
+}
+
+.input-box button {
+  margin-left: 5px;
+  padding: 10px;
+  border: none;
+  border-radius: 10px;
+  background: #22c55e;
+  color: white;
+  cursor: pointer;
+}
+
+/* LOADING */
+.loading {
+  opacity: 0.6;
+  font-style: italic;
+}
+</style>
+
+</head>
+
+<body>
+
+<div class="sidebar">
+  <h2>Daniel AI 🤖</h2>
+  <div class="new-chat" onclick="nuevoChat()">+ Nuevo chat</div>
+</div>
+
+<div class="main">
+
+  <div class="start" id="start">
+    <h1>¿En qué puedo ayudarte?</h1>
+    <input id="startInput" placeholder="Escribe algo..."
+      onkeydown="if(event.key==='Enter') iniciar()">
+  </div>
+
+  <div class="chat" id="chat"></div>
+
+  <div class="input-box" id="inputBox">
+    <input type="text" id="msg" placeholder="Escribe tu mensaje..."
+      onkeydown="if(event.key==='Enter') enviar()">
+    <button onclick="hablar()">🎤</button>
+    <button onclick="enviar()">➤</button>
+  </div>
+
+</div>
+
+<script>
+let historial = JSON.parse(localStorage.getItem("chat")) || [];
+
+function guardar() {
+  localStorage.setItem("chat", JSON.stringify(historial));
+}
+
+function cargar() {
+  const chat = document.getElementById("chat");
+  historial.forEach(m => {
+    chat.innerHTML += `<div class="msg ${m.tipo}">${m.texto}</div>`;
+  });
+}
+
+function nuevoChat() {
+  historial = [];
+  guardar();
+  location.reload();
+}
+
+function iniciar() {
+  const val = document.getElementById("startInput").value;
+  if (!val) return;
+
+  document.getElementById("start").style.display = "none";
+  document.getElementById("chat").style.display = "block";
+  document.getElementById("inputBox").style.display = "flex";
+
+  document.getElementById("msg").value = val;
+  enviar();
+}
+
+async function enviar() {
+  const input = document.getElementById("msg");
+  const chat = document.getElementById("chat");
+  const mensaje = input.value;
+
+  if (!mensaje) return;
+
+  chat.innerHTML += `<div class="msg user">${mensaje}</div>`;
+  historial.push({tipo:"user", texto:mensaje});
+  guardar();
+
+  input.value = "";
+
+  const id = Date.now();
+  chat.innerHTML += `<div class="msg bot loading" id="load-${id}">Escribiendo...</div>`;
+  chat.scrollTop = chat.scrollHeight;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const res = await fetch(`https://api.delirius.store/ia/gemini?query=${encodeURIComponent(mensaje)}`, {
+      signal: controller.signal
+    });
+
+    clearTimeout(timeout);
+
+    const data = await res.json();
+
+    let respuesta = data.data.result;
+
+    // PERSONALIDAD
+    respuesta = "🤖 Soy Daniel AI, una inteligencia creada por Daniel.\n\n" + respuesta;
+
+    document.getElementById(`load-${id}`).remove();
+
+    const div = document.createElement("div");
+    div.className = "msg bot";
+    chat.appendChild(div);
+
+    escribir(respuesta, div);
+
+    historial.push({tipo:"bot", texto:respuesta});
+    guardar();
+
+    hablarRespuesta(respuesta);
+
+  } catch {
+    document.getElementById(`load-${id}`).remove();
+    chat.innerHTML += `<div class="msg bot">⚠️ Error o demora en la IA</div>`;
+  }
+}
+
+function escribir(texto, el) {
+  let i = 0;
+  const int = setInterval(() => {
+    el.textContent += texto[i];
+    i++;
+    if (i >= texto.length) clearInterval(int);
+  }, 15);
+}
+
+function hablar() {
+  const rec = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+  rec.lang = "es-ES";
+  rec.start();
+  rec.onresult = e => {
+    document.getElementById("msg").value = e.results[0][0].transcript;
+  };
+}
+
+function hablarRespuesta(texto) {
+  const voz = new SpeechSynthesisUtterance(texto);
+  voz.lang = "es-ES";
+  speechSynthesis.speak(voz);
+}
+
+// cargar historial al iniciar
+window.onload = () => {
+  if (historial.length > 0) {
+    document.getElementById("start").style.display = "none";
+    document.getElementById("chat").style.display = "block";
+    document.getElementById("inputBox").style.display = "flex";
+    cargar();
+  }
+}
+</script>
+
+</body>
+</html>
